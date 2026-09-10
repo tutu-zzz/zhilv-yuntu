@@ -19,6 +19,35 @@ export interface TripEditPayload {
   preserve_constraints: string[];
 }
 
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ChatContext {
+  active_panel?: string | null;
+  selected_day?: number | null;
+}
+
+export interface TripChatPayload {
+  trip_id: string;
+  current_itinerary: Itinerary;
+  messages: ChatMessage[];
+  context?: ChatContext | null;
+}
+
+export interface ChatTokenUsage {
+  planner_prompt_tokens?: number;
+  planner_completion_tokens?: number;
+}
+
+export interface TripChatResponse {
+  reply: string;
+  itinerary: Itinerary | null;
+  changed: boolean;
+  token_usage?: ChatTokenUsage | null;
+}
+
 export interface SpotItem {
   name: string;
   start_time?: string | null;

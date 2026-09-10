@@ -1,27 +1,33 @@
 <script setup lang="ts">
 import { ref } from "vue";
-
-import type { Itinerary } from "./types";
 import History from "./views/History.vue";
 import Home from "./views/Home.vue";
-import Result from "./views/Result.vue";
+import TripWorkspace from "./views/TripWorkspace.vue";
+import type { Itinerary } from "./types";
 
-const currentView = ref<"home" | "result" | "history">("home");
+const currentView = ref<"home" | "workspace" | "history">("home");
 const latestItinerary = ref<Itinerary | null>(null);
 
 function handleGenerated(itinerary: Itinerary) {
   latestItinerary.value = itinerary;
-  currentView.value = "result";
+  currentView.value = "workspace";
 }
 
 function openTrip(itinerary: Itinerary) {
   latestItinerary.value = itinerary;
-  currentView.value = "result";
+  currentView.value = "workspace";
 }
 
 function updateCurrentItinerary(itinerary: Itinerary) {
   latestItinerary.value = itinerary;
-  currentView.value = "result";
+}
+
+function navigateToHome() {
+  currentView.value = "home";
+}
+
+function navigateToHistory() {
+  currentView.value = "history";
 }
 </script>
 
@@ -40,13 +46,13 @@ function updateCurrentItinerary(itinerary: Itinerary) {
           <button
             :class="[
               'nav-tab',
-              { 'nav-tab--active': currentView === 'result' },
+              { 'nav-tab--active': currentView === 'workspace' },
               { 'nav-tab--disabled': !latestItinerary }
             ]"
             :disabled="!latestItinerary"
-            @click="currentView = 'result'"
+            @click="currentView = 'workspace'"
           >
-            结果
+            工作台
           </button>
           <button
             :class="['nav-tab', { 'nav-tab--active': currentView === 'history' }]"
@@ -63,11 +69,11 @@ function updateCurrentItinerary(itinerary: Itinerary) {
         v-if="currentView === 'home'"
         @generated="handleGenerated"
       />
-      <Result
-        v-else-if="currentView === 'result'"
+      <TripWorkspace
+        v-else-if="currentView === 'workspace'"
         :itinerary="latestItinerary"
-        @back-home="currentView = 'home'"
-        @view-history="currentView = 'history'"
+        @back-home="navigateToHome"
+        @view-history="navigateToHistory"
         @updated="updateCurrentItinerary"
       />
       <History
@@ -80,7 +86,7 @@ function updateCurrentItinerary(itinerary: Itinerary) {
 </template>
 
 <style scoped>
-:global(body) {
+body {
   margin: 0;
   min-width: 320px;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -89,7 +95,7 @@ function updateCurrentItinerary(itinerary: Itinerary) {
   -webkit-font-smoothing: antialiased;
 }
 
-:global(*) {
+* {
   box-sizing: border-box;
 }
 
@@ -111,7 +117,7 @@ function updateCurrentItinerary(itinerary: Itinerary) {
 }
 
 .nav-bar__inner {
-  max-width: 1280px;
+  max-width: 1440px;
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -162,7 +168,7 @@ function updateCurrentItinerary(itinerary: Itinerary) {
 }
 
 .page-content {
-  max-width: 1280px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 20px 20px 40px;
 }

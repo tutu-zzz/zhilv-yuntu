@@ -113,6 +113,9 @@ def _build_chat_llm():
         base_url=LLM_BASE_URL or None,
         timeout=LLM_TIMEOUT_SECONDS,
         max_retries=LLM_MAX_RETRIES,
+        # qwen3.x 系列为思考型模型，默认会先生成大量内部推理再输出结果，
+        # 关闭思考可显著降低 rewrite 延迟（实测 30s -> 秒级）。
+        extra_body={"enable_thinking": False},
     )
 
 
@@ -143,10 +146,11 @@ def llm_rewrite_query(
         "你是一个 RAG 检索 query 改写专家。"
         "你的任务是把用户的旅行需求改写成适合向量检索的关键词组合。"
         "输出要求："
-        "1. 只输出检索关键词，用空格分隔"
+        "1. 只输出一行检索关键词，用空格分隔，总长不超过 20 个字"
         "2. 不要输出解释、标点或任何多余文字"
         "3. 关键词要具体，优先包含景点名称、活动类型、场景特征"
         "4. 包含目的地城市名"
+        "示例输出：大理 洱海 拍照 美食 古镇"
     )
 
     parts = [f"目的地：{destination}"]
@@ -171,9 +175,16 @@ def llm_rewrite_query(
                 for item in raw_text
             )
         query = raw_text.strip()
-        if query:
+        if query and len(query) <= 60:
             logger.info("llm_rewrite_query: input=%s -> output=%s", human_prompt, query)
             return query, token_usage
+        if query:
+            # 轻量模型可能无视"只输出关键词"指令输出长篇内容：
+            # 超长结果视为无效，回退规则级改写，避免拖慢检索并浪费 token。
+            logger.warning(
+                "llm_rewrite_query: output too long (%d chars), falling back to rule-based",
+                len(query),
+            )
     except Exception:
         logger.warning("llm_rewrite_query failed, falling back to rule-based", exc_info=True)
 

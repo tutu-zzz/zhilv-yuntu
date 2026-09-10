@@ -175,6 +175,44 @@ class Itinerary(BaseModel):
     token_usage: TokenUsage | None = Field(default=None, description="LLM token 消耗统计")
 
 
+class ChatMessage(BaseModel):
+    """对话消息。"""
+
+    role: str = Field(..., description="消息角色：user 或 assistant")
+    content: str = Field(..., description="消息内容")
+
+
+class ChatContext(BaseModel):
+    """前端工作台当前上下文。"""
+
+    active_panel: str | None = Field(
+        default=None,
+        description="用户当前所在面板：overview / itinerary / places / notes",
+    )
+    selected_day: int | None = Field(default=None, ge=1, description="用户当前选中的天（day_index）")
+
+
+class TripChatRequest(BaseModel):
+    """对话式行程编辑请求体。"""
+
+    trip_id: str = Field(..., description="行程 ID")
+    current_itinerary: Itinerary = Field(..., description="当前完整行程")
+    messages: list[ChatMessage] = Field(default_factory=list, description="对话历史（按时间正序）")
+    context: ChatContext | None = Field(default=None, description="工作台当前上下文")
+
+
+class TripChatResponse(BaseModel):
+    """对话式行程编辑响应体。"""
+
+    reply: str = Field(..., description="AI 回复文本，展示在对话窗口")
+    itinerary: Itinerary | None = Field(
+        default=None,
+        description="修改后的完整行程；本次对话未修改行程时为 null",
+    )
+    changed: bool = Field(default=False, description="本次对话是否修改了行程")
+    token_usage: TokenUsage | None = Field(default=None, description="本次对话 token 消耗")
+
+
 class TripDetailResponse(BaseModel):
     """查询已保存行程时返回的响应体。"""
 

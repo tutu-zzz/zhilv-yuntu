@@ -1,0 +1,377 @@
+/* =========================================================
+ * 三栏工作台共享样式（非 scoped，供 workspace 各面板复用）
+ * 视觉语言沿用 Result.vue 的 iOS 风格
+ * ========================================================= */
+
+.ws-card {
+  padding: 20px;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.ws-card--full {
+  grid-column: 1 / -1;
+}
+
+.ws-card--map {
+  min-height: 320px;
+}
+
+.ws-card__title {
+  margin: 0 0 16px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1c1c1e;
+}
+
+.ws-card__header {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1c1c1e;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.06);
+}
+
+.ws-info {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.04);
+  font-size: 14px;
+  color: #3c3c43;
+}
+
+.ws-info__label {
+  color: #8e8e93;
+}
+
+.ws-summary {
+  margin: 14px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #3c3c43;
+}
+
+.ws-muted {
+  color: #8e8e93;
+  font-size: 13px;
+}
+
+.ws-empty {
+  text-align: center;
+  color: #8e8e93;
+  font-size: 14px;
+  padding: 32px 20px;
+}
+
+.ws-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ws-btn:active {
+  transform: scale(0.97);
+}
+
+.ws-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ws-btn--primary {
+  background: #007aff;
+  color: #ffffff;
+}
+
+.ws-btn--danger {
+  background: #ff3b30;
+  color: #ffffff;
+}
+
+.ws-btn--sm {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+.ws-select {
+  flex: 1;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #d1d1d6;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #1c1c1e;
+  background: #ffffff;
+  outline: none;
+}
+
+.ws-select:focus {
+  border-color: #007aff;
+}
+
+.ws-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d1d6;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #1c1c1e;
+  background: #ffffff;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.ws-textarea:focus {
+  border-color: #007aff;
+}
+
+/* 旅行提示 */
+.ws-tips {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #f2f2f7;
+}
+
+.ws-tips__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #3c3c43;
+  margin-bottom: 8px;
+}
+
+.ws-tips ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: #636366;
+  line-height: 1.8;
+}
+
+/* 预算 */
+.ws-budget-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.ws-budget-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f2f2f7;
+}
+
+.ws-budget-item__label {
+  font-size: 13px;
+  color: #8e8e93;
+}
+
+.ws-budget-item__value {
+  font-size: 15px;
+  font-weight: 600;
+  color: #007aff;
+}
+
+.ws-budget-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #007aff;
+  color: #ffffff;
+  font-size: 15px;
+}
+
+.ws-budget-total strong {
+  font-size: 22px;
+}
+
+/* 天气 */
+.ws-weather-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.ws-weather-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f2f2f7;
+}
+
+.ws-weather-item__date {
+  font-size: 13px;
+  font-weight: 600;
+  color: #3c3c43;
+  min-width: 60px;
+}
+
+.ws-weather-item__temp {
+  font-size: 18px;
+  font-weight: 700;
+  color: #007aff;
+  min-width: 80px;
+}
+
+.ws-weather-item__desc {
+  font-size: 13px;
+  color: #636366;
+}
+
+/* 按天花费 */
+.ws-day-budget-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.ws-day-budget {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 0.5px solid rgba(0, 0, 0, 0.06);
+}
+
+.ws-day-budget__head {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #f2f2f7;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3c3c43;
+}
+
+.ws-day-budget__body {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+}
+
+.ws-row-between {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #636366;
+}
+
+.ws-row-between--bold {
+  padding-top: 8px;
+  border-top: 0.5px solid rgba(0, 0, 0, 0.06);
+  font-weight: 600;
+  color: #1c1c1e;
+}
+
+/* 点位明细 */
+.ws-point-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.ws-point {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 0.5px solid rgba(0, 0, 0, 0.06);
+}
+
+.ws-point__head {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #f2f2f7;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3c3c43;
+}
+
+.ws-point__img {
+  display: block;
+  width: 100%;
+  height: 140px;
+  background-color: #f2f2f7;
+  object-fit: cover;
+}
+
+.ws-point__img--empty {
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  color: #8e8e93;
+}
+
+.ws-point__info {
+  padding: 6px 12px 0;
+  font-size: 13px;
+  color: #3c3c43;
+}
+
+.ws-point__desc {
+  padding: 8px 12px 12px;
+  font-size: 13px;
+  color: #636366;
+  line-height: 1.6;
+}
+
+/* 每日行程 */
+.ws-day-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ws-day {
+  border-radius: 10px;
+  border: 0.5px solid rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.ws-day__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  background: #f2f2f7;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1c1c1e;
+  cursor: pointer;
+  list-style: none;
+}
+
+.ws-day__head::-webkit-details-marker {
+  display: none;
+}
+
+.ws-day__head::after {
+  content: "▸";
+  font-size: 14px;
+  color: #8e8e93;
+  transition: transform 0.2s ease;
+}
+
+.ws-day[open] .ws-day__head::after {
+  transform: rotate(90deg);
+}
+
+.ws-day__body {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  font-size: 14px;
+  color: #3c3c43;
+  line-height: 1.7;
+  border-top: 0.5px solid rgba(0, 0, 0, 0.06);
+}

@@ -13,12 +13,36 @@ from app.config import (
     LLM_MODEL,
     LLM_TIMEOUT_SECONDS,
 )
-from app.models.schemas import DayPlan, TripEditRequest, TripRequest
+from app.models.schemas import DayPlan, Itinerary, TripChatRequest, TripEditRequest, TripRequest
 from app.services.place_candidate_service import (
     CityCandidatePool,
     PlaceCandidate,
     PlaceCandidateCategory,
 )
+
+
+class LLMServiceError(RuntimeError):
+    """LLM 服务不可用的明确错误（如免费额度耗尽、鉴权失败），需要透出给用户。"""
+
+
+# 命中这些特征的异常属于账号/额度问题，降级无意义，必须明确告知用户。
+_LLM_QUOTA_ERROR_MARKERS = (
+    "FreeTierOnly",
+    "AllocationQuota",
+    "Free quota exhausted",
+    "Arrearage",
+    "quota",
+)
+
+
+def _raise_if_quota_error(exc: Exception) -> None:
+    """识别额度/配额类 LLM 异常并转换为 LLMServiceError。"""
+    text = str(exc)
+    if any(marker.lower() in text.lower() for marker in _LLM_QUOTA_ERROR_MARKERS):
+        raise LLMServiceError(
+            "模型服务免费额度已用完（403 FreeTierOnly）。"
+            "请到阿里云百炼控制台充值或关闭“仅限免费额度”模式后重试。"
+        ) from exc
 
 
 class PlannerDayDraft(BaseModel):
@@ -73,6 +97,27 @@ class DayEditDraft(BaseModel):
     meal_name: str = Field(..., description="编辑后的餐饮名称")
     meal_notes: str = Field(..., description="编辑后的餐饮说明")
     daily_note: str = Field(..., description="编辑后的当天备注")
+
+
+class ChatIntentDraft(BaseModel):
+    """对话意图解析结果。
+
+    intent = "adjust_day" 时，service 层会把 edit_instruction 转交
+    现有单日编辑链路（generate_day_edit_draft）执行真实修改；
+    intent = "general_chat" 时，reply 直接作为对话回答。
+    """
+
+    reply: str = Field(..., description="给用户的回复文本（简短、可操作）")
+    intent: str = Field(
+        ...,
+        description="意图类型：adjust_day（要求修改某天行程）或 general_chat（一般问答）",
+    )
+    day_index: int | None = Field(
+        default=None, ge=1, description="intent=adjust_day 时的目标天 day_index"
+    )
+    edit_instruction: str | None = Field(
+        default=None, description="intent=adjust_day 时，转换后的编辑指令"
+    )
 
 
 def _normalize_day_edit_payload(payload: dict) -> dict:
@@ -170,6 +215,9 @@ def _build_chat_llm():
         base_url=LLM_BASE_URL or None,
         timeout=LLM_TIMEOUT_SECONDS,
         max_retries=LLM_MAX_RETRIES,
+        # qwen3.x 为思考型模型：默认内部推理会消耗大量时间与 token，
+        # 行程生成/编辑/对话都要求"只输出 JSON"，关闭思考即可加速。
+        extra_body={"enable_thinking": False},
     )
 
 
@@ -525,6 +573,7 @@ JSON 结构示例：
         )
     except Exception as exc:
         print(f"[trip_planner_agent] 单日编辑调用失败: {type(exc).__name__}: {exc}")
+        _raise_if_quota_error(exc)
         return None, empty_usage
 
     token_usage = _extract_token_usage(response)
@@ -551,5 +600,130 @@ JSON 结构示例：
         return DayEditDraft.model_validate(normalized_payload), token_usage
     except Exception as exc:
         print(f"[trip_planner_agent] 单日编辑 JSON 解析失败: {type(exc).__name__}: {exc}")
+        print(f"[trip_planner_agent] 原始返回预览: {str(raw_text)[:300]}")
+        return None, token_usage
+
+
+def _summarize_itinerary_for_chat(itinerary: Itinerary) -> str:
+    """把完整 itinerary 压缩成对话上下文友好的摘要，控制 token 消耗。"""
+    payload = itinerary.model_dump(mode="json")
+    days_summary = []
+    for day in payload.get("days", []):
+        spots = "、".join(spot.get("name", "") for spot in day.get("spots", []) if spot.get("name"))
+        meals = "、".join(meal.get("name", "") for meal in day.get("meals", []) if meal.get("name"))
+        hotel = day.get("hotel") or {}
+        days_summary.append(
+            {
+                "day": day.get("day_index"),
+                "date": day.get("date"),
+                "theme": day.get("theme"),
+                "spots": spots or "未安排",
+                "meals": meals or "未安排",
+                "hotel": hotel.get("name") or "未安排",
+            }
+        )
+    summary = {
+        "destination": payload.get("destination"),
+        "summary": payload.get("summary"),
+        "estimated_budget": payload.get("estimated_budget"),
+        "days": days_summary,
+    }
+    return json.dumps(summary, ensure_ascii=False, indent=2)
+
+
+def generate_chat_reply(
+    request: TripChatRequest,
+) -> tuple[ChatIntentDraft | None, dict[str, int]]:
+    """
+    对话式行程助手：解析用户消息意图并生成回复。
+
+    返回 (intent_draft, token_usage)。
+    - intent = "adjust_day"：service 层将 edit_instruction 转交单日编辑链路
+    - intent = "general_chat"：直接返回 reply
+    """
+    empty_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    llm = _build_chat_llm()
+    if llm is None:
+        return None, empty_usage
+
+    conversation_text = "\n".join(
+        f"{'用户' if message.role == 'user' else '助手'}：{message.content}"
+        for message in request.messages[-10:]
+    )
+    context = request.context
+    context_text = (
+        f"用户当前所在面板：{context.active_panel or '未知'}；"
+        f"当前选中的天：第 {context.selected_day or 1} 天"
+    )
+
+    system_prompt = (
+        "你是旅行工作台的 AI 行程助手。用户会和你对话来调整旅行计划。"
+        "你的回复必须简短、可操作（不超过 5 行），符合产品语气。"
+        "判断用户意图："
+        "- 如果用户要求修改行程（调整节奏、换景点、增减安排、改预算侧重等），"
+        "intent 填 adjust_day，并从消息中推断目标天（未指明时用当前选中的天），"
+        "把用户诉求改写成一句明确的编辑指令放入 edit_instruction。"
+        "- 如果只是提问或闲聊（问景点信息、天气、注意事项等），intent 填 general_chat，"
+        "reply 直接回答（可基于行程摘要）。"
+        "你必须只输出一个 JSON 对象，不要输出 Markdown，不要输出解释文字。"
+    )
+
+    human_prompt = f"""
+当前行程摘要：
+{_summarize_itinerary_for_chat(request.current_itinerary)}
+
+{context_text}
+
+最近对话：
+{conversation_text or '（无）'}
+
+用户新消息：{request.messages[-1].content if request.messages else ''}
+
+要求：
+1. 只返回 JSON 对象，结构如下：
+{{
+  "reply": "给用户的回复",
+  "intent": "adjust_day 或 general_chat",
+  "day_index": 目标天数字（general_chat 时可为 null）,
+  "edit_instruction": "编辑指令字符串（general_chat 时可为 null）"
+}}
+2. intent=adjust_day 时，reply 简要确认你要做什么调整（例如：好的，我来把第 3 天调整得更轻松）。
+3. 如果用户要求修改的目标天不存在，intent 填 general_chat，reply 里说明可调整的天数范围。
+"""
+
+    print("[trip_planner_agent] 准备调用大模型进行对话意图解析...")
+    try:
+        response = llm.invoke(
+            [
+                ("system", system_prompt),
+                ("human", human_prompt),
+            ]
+        )
+    except Exception as exc:
+        print(f"[trip_planner_agent] 对话意图解析调用失败: {type(exc).__name__}: {exc}")
+        _raise_if_quota_error(exc)
+        return None, empty_usage
+
+    token_usage = _extract_token_usage(response)
+    raw_text = getattr(response, "content", "")
+    if isinstance(raw_text, list):
+        raw_text = "".join(
+            item.get("text", "") if isinstance(item, dict) else str(item)
+            for item in raw_text
+        )
+
+    json_text = _extract_json_object(str(raw_text))
+    if json_text is None:
+        print("[trip_planner_agent] 未能从对话意图解析结果中提取 JSON。")
+        print(f"[trip_planner_agent] 原始返回预览: {str(raw_text)[:300]}")
+        return None, token_usage
+
+    try:
+        payload = json.loads(json_text)
+        if not isinstance(payload, dict):
+            raise ValueError("对话意图解析结果不是 JSON 对象。")
+        return ChatIntentDraft.model_validate(payload), token_usage
+    except Exception as exc:
+        print(f"[trip_planner_agent] 对话意图 JSON 解析失败: {type(exc).__name__}: {exc}")
         print(f"[trip_planner_agent] 原始返回预览: {str(raw_text)[:300]}")
         return None, token_usage

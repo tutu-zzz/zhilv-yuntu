@@ -6,6 +6,7 @@ from app.agents.trip_planner_agent import (
     DynamicPlannerDayDraft,
     DynamicPlannerDraft,
     collect_trip_context,
+    generate_chat_reply,
     generate_day_edit_draft,
     generate_dynamic_planner_draft,
     generate_planner_draft,
@@ -20,6 +21,8 @@ from app.models.schemas import (
     SpotItem,
     TokenUsage,
     TransportItem,
+    TripChatRequest,
+    TripChatResponse,
     TripEditRequest,
     TripRequest,
 )
@@ -867,4 +870,85 @@ def edit_trip_itinerary(request: TripEditRequest) -> Itinerary:
         updated_itinerary,
         city=updated_itinerary.destination,
         request_budget=reference_budget,
+    )
+
+
+def chat_with_trip(request: TripChatRequest) -> TripChatResponse:
+    """对话式行程助手：解析用户消息意图，必要时复用单日编辑链路执行真实修改。"""
+    if not request.messages:
+        raise ValueError("对话消息不能为空。")
+
+    intent_draft, chat_usage = generate_chat_reply(request)
+    chat_token_usage = TokenUsage(
+        planner_prompt_tokens=chat_usage.get("prompt_tokens", 0),
+        planner_completion_tokens=chat_usage.get("completion_tokens", 0),
+    )
+
+    if intent_draft is None:
+        return TripChatResponse(
+            reply="这次没有理解你的需求，请换个说法再试一次，例如：把第 2 天调整得更轻松。",
+            itinerary=None,
+            changed=False,
+            token_usage=chat_token_usage,
+        )
+
+    if intent_draft.intent != "adjust_day" or not intent_draft.edit_instruction:
+        return TripChatResponse(
+            reply=intent_draft.reply,
+            itinerary=None,
+            changed=False,
+            token_usage=chat_token_usage,
+        )
+
+    valid_day_indexes = {day.day_index for day in request.current_itinerary.days}
+    if not valid_day_indexes:
+        return TripChatResponse(
+            reply="当前行程还没有可调整的日期，先生成行程后再来找我吧。",
+            itinerary=None,
+            changed=False,
+            token_usage=chat_token_usage,
+        )
+
+    target_day_index = intent_draft.day_index
+    if target_day_index is None and request.context is not None:
+        target_day_index = request.context.selected_day
+    if target_day_index not in valid_day_indexes:
+        # 模型解析的天数越界或缺失时，降级到上下文选中的天，再不行则取第一天
+        fallback_day = (
+            request.context.selected_day if request.context is not None else None
+        )
+        target_day_index = (
+            fallback_day if fallback_day in valid_day_indexes else min(valid_day_indexes)
+        )
+
+    edit_request = TripEditRequest(
+        trip_id=request.trip_id,
+        current_itinerary=request.current_itinerary,
+        user_instruction=intent_draft.edit_instruction,
+        edit_scope=f"day_{target_day_index}",
+        preserve_constraints=["保留预算结构", "保留目的地和旅行日期"],
+    )
+    updated_itinerary = edit_trip_itinerary(edit_request)
+
+    # 合并对话意图解析与单日编辑两阶段的 token 消耗
+    edit_usage = updated_itinerary.token_usage
+    updated_itinerary.token_usage = TokenUsage(
+        planner_prompt_tokens=(
+            chat_token_usage.planner_prompt_tokens
+            + (edit_usage.planner_prompt_tokens if edit_usage else 0)
+        ),
+        planner_completion_tokens=(
+            chat_token_usage.planner_completion_tokens
+            + (edit_usage.planner_completion_tokens if edit_usage else 0)
+        ),
+    )
+
+    reply = intent_draft.reply.strip() or f"已调整第 {target_day_index} 天的行程。"
+    reply = f"{reply}\n\n已应用到第 {target_day_index} 天，你可以在行程面板查看更新结果。"
+
+    return TripChatResponse(
+        reply=reply,
+        itinerary=updated_itinerary,
+        changed=True,
+        token_usage=updated_itinerary.token_usage,
     )

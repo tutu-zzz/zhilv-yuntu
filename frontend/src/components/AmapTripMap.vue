@@ -200,7 +200,10 @@ function ensureMapScript(): Promise<void> {
     }
 
     const script = document.createElement("script");
-    script.src = `https://webapi.amap.com/maps?v=2.0&key=${amapKey}`;
+    // 使用 JS API 1.4.x：2.0 强制要求配置安全密钥（securityJsCode），
+    // 未配置时底图瓦片不加载（白图）但覆盖物正常，表现为"地图空白"。
+    // 如需升级 2.0，需在加载脚本前设置 window._AMapSecurityConfig。
+    script.src = `https://webapi.amap.com/maps?v=1.4.15&key=${amapKey}`;
     script.async = true;
     script.defer = true;
     script.dataset.amapLoader = "true";

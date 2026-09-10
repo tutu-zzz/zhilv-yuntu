@@ -3,6 +3,8 @@ from fastapi import APIRouter, HTTPException
 from app.models.schemas import (
     Itinerary,
     TokenStatsResponse,
+    TripChatRequest,
+    TripChatResponse,
     TripDetailResponse,
     TripEditRequest,
     TripListResponse,
@@ -26,7 +28,9 @@ from app.services.storage_service import (
     list_saved_itineraries,
     save_itinerary,
 )
+from app.agents.trip_planner_agent import LLMServiceError
 from app.services.trip_service import (
+    chat_with_trip,
     edit_trip_itinerary,
     generate_dynamic_trip_itinerary,
     generate_trip_itinerary,
@@ -170,6 +174,20 @@ def get_trip_token_stats() -> TokenStatsResponse:
 def edit_trip(request: TripEditRequest) -> Itinerary:
     """根据用户编辑指令返回更新后的 itinerary。"""
     return edit_trip_itinerary(request)
+
+
+@router.post("/chat", response_model=TripChatResponse)
+def chat_trip(request: TripChatRequest) -> TripChatResponse:
+    """对话式行程助手：根据用户消息回复并按需修改行程。"""
+    try:
+        return chat_with_trip(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except LLMServiceError as exc:
+        # 模型额度/鉴权类错误：明确透出给前端，而不是降级成模糊失败
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - 统一转为可读的 500
+        raise HTTPException(status_code=500, detail="对话处理失败，请稍后重试。") from exc
 
 
 @router.post("/save")
