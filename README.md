@@ -9,8 +9,12 @@
 ## 📝 最近更新
 
 <details>
-<summary><strong>查看版本更新记录（最新：2026-07-26）</strong></summary>
+<summary><strong>查看版本更新记录（最新：2026-09-10）</strong></summary>
 
+- `2026-09-10`
+  - 三栏旅行工作台：中栏 Overview / Itinerary / Places / Notes + 对话式 AI 助手，后端新增 `POST /trip/chat` 对话式编辑（复用编辑链路，保留真实性约束）。
+  - 生成提速约 77%：关闭 qwen3.x 思考模式，完整链路实测 96.9s → 22.3s；模型额度错误透明化返回 403 提示。
+  - 工程修复：Vite proxy 动态本机 IP（换网络零配置）、高德 JS API 1.4.15 修复底图白图、前端 vitest 测试基建（`npm test`）。
 - `2026-07-26`
   - 动态城市：新增 A/B/C 覆盖分级。6 个已沉淀城市继续走本地 RAG；其他可识别城市在候选充足时，通过高德景点、餐饮和住宿 POI 候选直接生成动态方案。用户已手工验证多个城市可以生成。
   - 真实性约束：动态 Planner 只输出候选 POI ID，服务层校验后回填真实名称、地址、坐标和图片；模型不可用或返回越界 ID 时，也只从本次真实候选池降级。
@@ -393,14 +397,28 @@ TripPlannerDemo/
 │   ├── src/
 │   │   ├── views/
 │   │   │   ├── Home.vue                 # 规划页面
-│   │   │   ├── Result.vue               # 行程结果页面
+│   │   │   ├── TripWorkspace.vue        # 三栏旅行工作台（当前结果页）
+│   │   │   ├── Result.vue               # 旧结果页（保留未引用，可回退）
 │   │   │   └── History.vue              # 历史行程页面
 │   │   ├── components/
-│   │   │   └── AmapTripMap.vue          # 地图展示组件
-│   │   ├── services/api.ts              # 后端接口封装
+│   │   │   ├── AmapTripMap.vue          # 地图展示组件
+│   │   │   └── workspace/               # 工作台面板组件
+│   │   │       ├── TripNav.vue          # 左栏导航（概要/导航/操作）
+│   │   │       ├── OverviewPanel.vue    # 总览（概要/预算/地图/天气）
+│   │   │       ├── ItineraryPanel.vue   # 行程（每日卡片/花费/点位）
+│   │   │       ├── PlacesPanel.vue      # 地点聚合展示
+│   │   │       ├── NotesPanel.vue       # 笔记（摘要/逐日备注）
+│   │   │       └── AiAssistantPanel.vue # AI 对话助手（可收起为悬浮按钮）
+│   │   ├── composables/
+│   │   │   └── useItinerary.ts          # 行程派生数据（预算/地图点/提示）
+│   │   ├── assets/workspace.css         # 工作台共享样式
+│   │   ├── services/api.ts              # 后端接口封装（同源 /api 经 Vite proxy）
 │   │   ├── types/                       # TypeScript 类型定义
 │   │   ├── App.vue
 │   │   └── main.ts
+│   ├── tests/
+│   │   └── workspace.test.ts            # 工作台组件挂载测试（vitest）
+│   ├── vitest.config.ts                 # 前端测试配置
 │   ├── Dockerfile                       # 前端镜像配置
 │   ├── nginx.conf                       # Nginx 反向代理配置
 │   └── package.json
@@ -451,8 +469,10 @@ TripPlannerDemo/
   Axios 封装与后端接口通信。
 - `frontend/src/views/Home.vue`
   规划页，收集用户输入并发起行程生成请求。
-- `frontend/src/views/Result.vue`
-  结果展示页，承接 itinerary、地图、天气和导出交互。
+- `frontend/src/views/TripWorkspace.vue`
+  三栏旅行工作台：左栏导航与操作、中栏 Overview/Itinerary/Places/Notes 面板、右栏 AI 助手。
+- `frontend/src/components/workspace/AiAssistantPanel.vue`
+  对话式 AI 助手：自然语言调整行程（`/trip/chat`）、快捷指令，可收起为悬浮按钮。
 - `frontend/src/views/History.vue`
   历史列表页，支持查看、打开和删除历史行程。
 - `frontend/src/components/AmapTripMap.vue`
@@ -628,16 +648,18 @@ ENABLE_AMAP_ENRICHMENT=true             # 是否开启地图信息补全
 ### 前端 `frontend/.env`
 
 ```env
-VITE_API_BASE_URL=http://你的服务器地址:8000
+# 本地开发默认走同源 /api（由 Vite proxy 转发，本机 IP 变化无需改配置）。
+# 仅当后端部署在其他机器时才需要设置：
+# VITE_API_BASE_URL=http://你的服务器地址:8000
 VITE_AMAP_JS_KEY=your_amap_javascript_api_key
 ```
 
 注意：
 
-- 如果浏览器在本机打开，`VITE_API_BASE_URL` 不要写远程服务器内部的 `127.0.0.1`
+- 本地开发无需设置 `VITE_API_BASE_URL`；后端地址由 `vite.config.ts` 的 proxy 自动探测本机 IP
 - 后端高德 key 使用 Web 服务 key
 - 前端地图 key 使用 JavaScript API key
-- 修改 `.env` 后需要重启对应服务
+- 修改 `.env` 或 `vite.config.ts` 后需要重启前端 dev server
 
 ---
 
@@ -665,6 +687,7 @@ written_count: 9
 | `GET` | `/` | 服务启动检查 |
 | `GET` | `/health` | 健康检查 |
 | `POST` | `/trip/generate` | 生成行程 |
+| `POST` | `/trip/chat` | 对话式行程编辑（意图解析，按需修改行程） |
 | `GET` | `/trip/stats` | 查询已保存行程的 token 消耗统计 |
 | `POST` | `/trip/edit` | 智能编辑行程 |
 | `POST` | `/trip/save` | 保存行程 |
@@ -867,7 +890,7 @@ cd frontend
 - ✅ **AI 与数据能力**：6 城本地攻略 RAG 路径 + 未沉淀城市动态 POI 路径；动态 Planner 通过 POI ID 白名单选择景点、餐饮和住宿，用户已手工验证多个城市可生成
 - ✅ **RAG 在线优化**：LLM-based Query Rewrite + Cross-encoder Rerank（qwen3-rerank）+ 噪声预过滤 + Rerank 缓存、目的地 metadata 过滤、检索调试脚本与 18 条评估样例集、量化评估指标体系（Top1/TopK Hit Rate、MRR、Noise Rate、Latency、Cross-destination Pollution）
 - ✅ **Token 观测能力**：`/trip/generate` 返回本次 Query Rewrite、Query Embedding、Rerank、Planner 的分项 token 消耗，后端终端同步打印 prompt/completion/total，`/trip/stats` 汇总已保存行程的 token 统计
-- ✅ **前端能力**：规划页、结果页、历史列表页，以及地图/天气/预算展示、导出与历史管理主流程
+- ✅ **前端能力**：规划页、三栏旅行工作台（总览/行程/地点/笔记 + 对话式 AI 助手）、历史列表页，以及地图/天气/预算展示、导出与历史管理主流程；前端具备 vitest 挂载测试基建（`npm test`）
 - ✅ **缓存与持久化**：SQLite 持久化存储 + Redis 缓存层（覆盖天气、地图、RAG 检索与 Rerank 结果）
 - ✅ **数据一致性与失败降级**：规则、fallback、评估断言与目的地 metadata 可离线校验；RAG 和动态候选路径均不生成模板化地点，模型返回候选池外 ID 时自动拒绝
 - ⚠️ **数据边界**：当前 Markdown 攻略仅作参考知识；价格、营业状态和可预订性尚未逐条接入可追溯的实时或人工核验来源
